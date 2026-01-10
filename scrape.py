@@ -4,9 +4,15 @@ import re
 from urllib.parse import urlparse
 import random
 import pandas as pd
+import logging
 
-def random_sleep(a,b):
-    sleep(random.uniform(a, b))
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
+
+
+def random_sleep(a, b):
+    t = random.uniform(a, b)
+    logging.info(f"sleep {t:.2f}s")
+    sleep(t)
 
 def extract_emails(text):
     # Регулярное выражение для поиска стандартных email-адресов
@@ -67,8 +73,25 @@ def extract_metrics(info):
     }
 
 def crazy():
+    logging.info("Init Chromium options")
     opts = ChromiumOptions()
-    website = ChromiumPage()
+
+    opts.set_argument("--no-sandbox")
+    opts.set_argument("--disable-dev-shm-usage")
+    opts.incognito()
+    opts.headless()
+    opts.no_imgs(True).mute(True)
+
+    # Явно указываем путь к бинарнику Chromium внутри контейнера, если метод доступен
+    try:
+        opts.set_browser_path('/usr/bin/chromium')
+    except Exception:
+        pass
+
+    logging.info("Start ChromiumPage")
+    website = ChromiumPage(opts)
+    
+    logging.info("Open search results page")
     website.get("https://www.youtube.com/results?search_query=faceless+youtube+tutorial")
     random_sleep(5,10)
     for i in range(10):
@@ -80,6 +103,7 @@ def crazy():
         attr = i.attr("href")
         if attr:
             links.append(attr)
+    logging.info(f"Collected {len(links)} video links")
 
     infos = dict()
     for i in links:
@@ -128,9 +152,14 @@ def crazy():
                 "videos": videos,
                 "views": views
             }
-            print(infos[channel_link])
+            logging.info(str(infos[channel_link]))
         except:
             pass
-    df = pd.DataFrame(infos)
-    df.to_excel("output.xlsx", index=False)
+    # Приводим словарь к табличному виду: строки — каналы, столбцы — метрики
+    df = pd.DataFrame.from_dict(infos, orient='index').reset_index().rename(columns={'index': 'channel_link'})
+    # Нормализуем contact_info (список → строка с разделителем ';')
+    if 'contact_info' in df.columns:
+        df['contact_info'] = df['contact_info'].apply(lambda x: ';'.join(x) if isinstance(x, list) else str(x))
+    logging.info(f"Saving {len(df)} rows to output.csv")
+    df.to_csv("output.csv", index=False)
 crazy()

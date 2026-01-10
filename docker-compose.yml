@@ -1,0 +1,76 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clickhouse
+    ports:
+      - '8123:8123'   # HTTP
+      - '9000:9000'   # Native TCP
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=default
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8123/ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  airflow-init:
+    build: .
+    image: local/airflow-chromium:latest
+    container_name: airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - airflow_home:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+      - ./:/opt/airflow/workspace
+    command: ['airflow', 'db', 'init']
+
+  airflow-webserver:
+    image: local/airflow-chromium:latest
+    container_name: airflow-webserver
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_WWW_USER_CREATE=True
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=thebest001
+    ports:
+      - '8080:8080'
+    volumes:
+      - airflow_home:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+      - ./:/opt/airflow/workspace
+    env_file:
+      - ./.env
+    command: ['airflow', 'webserver']
+
+  airflow-scheduler:
+    image: local/airflow-chromium:latest
+    container_name: airflow-scheduler
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      airflow-webserver:
+        condition: service_started
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - airflow_home:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+      - ./:/opt/airflow/workspace
+    env_file:
+      - ./.env
+    command: ['airflow', 'scheduler']
+
+volumes:
+  airflow_home:
+  clickhouse_data:

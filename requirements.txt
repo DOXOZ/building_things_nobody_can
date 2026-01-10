@@ -1,0 +1,6 @@
+DrissionPage
+pandas
+python-dotenv
+requests
+clickhouse-connect
+openai

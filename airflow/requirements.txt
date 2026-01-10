@@ -1,0 +1,6 @@
+apache-airflow==2.9.0
+pandas
+DrissionPage
+clickhouse-connect
+python-dotenv
+requests
